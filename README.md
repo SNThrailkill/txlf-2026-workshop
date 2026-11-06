@@ -3,14 +3,6 @@
 Hands-on workshop for **TXLF 2026**. You take a Fedora bootc image, give it a signed
 UKI with a composefs root and fs-verity, boot it, update it in place, and roll it back.
 
-Every build/seal/verify command in this repo runs against
-**[SNThrailkill/Bootc-Fedora](https://github.com/SNThrailkill/Bootc-Fedora)** — this
-repo is only the workshop materials, so there is nothing to fork or vendor here.
-The commands are proven against that repo at **`main` = 8c0ac1c**; if the surface
-drifts, `./build.py --help` there is the source of truth. Step 05 offers a
-pre-built fallback disk installed from Bootc-Fedora's published sealed image (see
-[`build-demo-disk.yml`](.github/workflows/build-demo-disk.yml)).
-
 ## The eight steps at a glance
 
 | # | Step | You end with | Time |
