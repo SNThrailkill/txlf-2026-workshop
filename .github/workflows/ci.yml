@@ -1,0 +1,49 @@
+# Minimal CI: the workshop materials stay complete and their links stay valid.
+# Nothing here builds an image — the commands live in Bootc-Fedora.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  materials:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Every workshop file is present and non-empty
+        run: |
+          set -euo pipefail
+          for f in README.md CHEATSHEET.md LICENSE \
+                   docs/workshop/00-prereqs.md docs/workshop/01-build.md \
+                   docs/workshop/02-keys.md docs/workshop/03-seal.md \
+                   docs/workshop/04-verify.md docs/workshop/05-boot.md \
+                   docs/workshop/06-update.md docs/workshop/07-supply-chain.md; do
+            test -s "$f" || { echo "missing or empty: $f"; exit 1; }
+          done
+          echo "all workshop files present"
+
+      - name: Relative links resolve
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, sys
+          bad = []
+          for md in sorted(pathlib.Path('.').rglob('*.md')):
+              if '.git/' in str(md):
+                  continue
+              for link in re.findall(r'\]\(([^)]+)\)', md.read_text()):
+                  if re.match(r'^(https?:|mailto:|#)', link):
+                      continue
+                  target = link.split('#', 1)[0]
+                  if target and not (md.parent / target).exists():
+                      bad.append(f'{md}: {link}')
+          if bad:
+              print('\n'.join(bad))
+              sys.exit(1)
+          print('all relative links resolve')
+          PY
