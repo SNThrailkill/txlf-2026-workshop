@@ -49,14 +49,17 @@ jobs:
 
       - name: Stay in Setup Mode, add cloud-init, convert
         run: |
-          set -euo pipefail
+          set -eux
           # Remove the auto-enrol blobs: this VM must stay in Setup Mode so the
           # update step can boot an image sealed with the attendee's demo keys.
           sudo modprobe nbd max_part=16
-          sudo qemu-nbd --connect=/dev/nbd0 out/disk.img
+          sudo qemu-nbd -f raw --connect=/dev/nbd0 out/disk.img
+          for _ in $(seq 1 15); do [ -b /dev/nbd0p1 ] && break; sleep 1; done
+          ls -l /dev/nbd0* || true
           sudo mkdir -p /mnt/esp
           sudo mount /dev/nbd0p1 /mnt/esp
           sudo rm -f /mnt/esp/loader/keys/auto/*.auth
+          ls -la /mnt/esp/loader/keys/auto/ || true
           sudo umount /mnt/esp
           sudo qemu-nbd --disconnect /dev/nbd0
           # NoCloud drive: sets the demo root password for the serial console.
