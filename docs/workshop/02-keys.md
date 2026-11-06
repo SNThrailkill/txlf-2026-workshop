@@ -23,9 +23,6 @@ git status --short
   container) to turn those certificates into the **`.auth` enrollment blobs**
   the firmware can apply on first boot.
 
-No magic: two shell scripts. You are expected to trust them because you can read
-them.
-
 ## ✓ You should see
 
 * `target/keys/` contains **PK, KEK and db**, each as `.key` **and** `.crt`.
