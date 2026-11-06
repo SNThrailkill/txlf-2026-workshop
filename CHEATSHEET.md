@@ -80,13 +80,16 @@ sudo podman run --rm --privileged \
 #             winget install SoftwareFreedomConservancy.QEMU)
 curl -LO https://github.com/SNThrailkill/txlf-2026-workshop/releases/download/demo-disks/cidata.iso
 cp /usr/share/edk2/ovmf/OVMF_VARS.fd ./VARS.fd
-qemu-system-x86_64 -enable-kvm -m 4096 \
+qemu-system-x86_64 -enable-kvm -M q35 -cpu host -m 4096 \
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd \
   -drive if=pflash,format=raw,file=./VARS.fd \
   -drive file=demo-disk/demo-disk.qcow2,if=virtio \
   -drive file=cidata.iso,media=cdrom \
   -netdev user,id=n0,hostfwd=tcp::2222-:22 -device virtio-net-pci,netdev=n0 \
   -nographic
+# no KVM? replace -enable-kvm -cpu host with -cpu max.
+# -cpu host/max is required: Fedora userspace is x86-64-v2 and qemu's default
+# qemu64 model lacks it, which makes the guest hang silently.
 
 # login: root / txlf2026 — then:
 bootc status
