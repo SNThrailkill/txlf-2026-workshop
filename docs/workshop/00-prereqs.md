@@ -11,7 +11,7 @@ git clone https://github.com/SNThrailkill/txlf-2026-workshop
 bash txlf-2026-workshop/check.sh
 ```
 
-Then the proven pipeline's own check:
+Then my example repo:
 
 ```bash
 git clone https://github.com/SNThrailkill/Bootc-Fedora
