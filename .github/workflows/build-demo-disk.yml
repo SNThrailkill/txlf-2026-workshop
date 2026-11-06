@@ -61,12 +61,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           IMG=ghcr.io/snthrailkill/bootc-fedora/nginx:sealed
-          gh release view demo-disks >/dev/null 2>&1 || \
+          NOTES="Installed from ${IMG} (published image, OCI format). Fallback disk for step 05: it ships Bootc-Fedora's Secure Boot keys, so it enrolls them on first boot and runs with Secure Boot enabled - but it cannot continue to step 06, which switches to an image sealed with an attendee's own demo keys."
+          if gh release view demo-disks >/dev/null 2>&1; then
+            gh release edit demo-disks --notes "$NOTES"
+          else
             gh release create demo-disks \
               --title "Demo disks for the TXLF 2026 workshop" \
-              --notes "Installed from ${IMG} (published image, OCI format). \
-                Fallback disk for step 05: it enrolls Bootc-Fedora's Secure \
-                Boot keys, so it boots but does not continue to step 06."
+              --notes "$NOTES"
+          fi
           gh release upload demo-disks \
             out/nginx-sealed-demo.qcow2 out/cidata.iso --clobber
           gh release view demo-disks --json assets --jq '.assets[] | "\(.name) \(.size)"'

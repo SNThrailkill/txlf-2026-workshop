@@ -15,7 +15,7 @@ pre-built fallback disk installed from Bootc-Fedora's published sealed image (se
 
 | # | Step | You end with | Time |
 |---|---|---|---|
-| 00 | [Prerequisites](docs/workshop/00-prereqs.md) | `doctor` says content **and** sealed are ready | 10 min |
+| 00 | [Prerequisites](docs/workshop/00-prereqs.md) | `check.sh` and `doctor` both green | 10 min |
 | 01 | [Build your first bootc image](docs/workshop/01-build.md) | your own image, built with plain podman | 20 min |
 | 02 | [Keys](docs/workshop/02-keys.md) | a demo PK/KEK/db, no private key in git | 15 min |
 | 03 | [Seal](docs/workshop/03-seal.md) | `nginx-sealed` with a signed UKI | 25 min |
@@ -26,23 +26,28 @@ pre-built fallback disk installed from Bootc-Fedora's published sealed image (se
 
 ## Prerequisites
 
+All of these are checked up front by step 00's `check.sh`:
+
 * **podman** — required; the workshop never uses docker
 * **Python 3.9+** and **git**
 * **`/dev/fuse`** — sealed builds compute the composefs digest through fuse
 * **~20 GB free disk**
-* **cosign** — needed only for step 07
-* **qemu + OVMF** — needed only for step 05; qemu runs on Linux, macOS and
-  Windows, and KVM is optional (it only makes the boot faster)
+* **cosign** — step 07
+* **qemu** — step 05 (with an **OVMF** firmware build; KVM is optional, it only
+  makes the boot faster)
 
 ## Quickstart
 
 ```bash
+git clone https://github.com/SNThrailkill/txlf-2026-workshop
+bash txlf-2026-workshop/check.sh              # 00, part 1
+
 git clone https://github.com/SNThrailkill/Bootc-Fedora
 cd Bootc-Fedora
-./build.py doctor                       # 00
-./build.py keygen --demo --with-auth    # 02
-./build.py seal --image nginx-sealed --tag demo   # 03
-./build.py verify --image nginx-sealed --tag demo # 04
+./build.py doctor                             # 00, part 2
+./build.py keygen --demo --with-auth          # 02
+./build.py seal --image nginx-sealed --tag demo     # 03
+./build.py verify --image nginx-sealed --tag demo   # 04
 ```
 
 Then work through `docs/workshop/` in order. [`CHEATSHEET.md`](CHEATSHEET.md) has

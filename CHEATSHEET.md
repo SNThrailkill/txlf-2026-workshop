@@ -12,6 +12,11 @@ Proven against `SNThrailkill/Bootc-Fedora` at `main` = **8c0ac1c**.
 ## 00 — Prerequisites
 
 ```bash
+git clone https://github.com/SNThrailkill/txlf-2026-workshop
+bash txlf-2026-workshop/check.sh      # podman, python, git, /dev/fuse, disk, cosign, qemu
+
+git clone https://github.com/SNThrailkill/Bootc-Fedora
+cd Bootc-Fedora
 ./build.py doctor
 ```
 
