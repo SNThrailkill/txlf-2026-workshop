@@ -55,12 +55,23 @@ jobs:
           sudo modprobe nbd max_part=16
           sudo qemu-nbd -f raw --connect=/dev/nbd0 out/disk.img
           for _ in $(seq 1 15); do [ -b /dev/nbd0p1 ] && break; sleep 1; done
-          ls -l /dev/nbd0* || true
-          sudo mkdir -p /mnt/esp
-          sudo mount /dev/nbd0p1 /mnt/esp
-          sudo rm -f /mnt/esp/loader/keys/auto/*.auth
-          ls -la /mnt/esp/loader/keys/auto/ || true
-          sudo umount /mnt/esp
+          sudo fdisk -l /dev/nbd0 || true
+          # Find the ESP by content (systemd-boot lives under loader/), not by
+          # assuming a partition number.
+          ESP=""
+          for part in $(seq 1 4); do
+            [ -b "/dev/nbd0p${part}" ] || continue
+            sudo mkdir -p /mnt/probe
+            sudo mount "/dev/nbd0p${part}" /mnt/probe 2>/dev/null || continue
+            if [ -d /mnt/probe/loader ]; then ESP="/dev/nbd0p${part}"; break; fi
+            sudo umount /mnt/probe
+          done
+          [ -n "$ESP" ] || { echo "no ESP found on the disk"; exit 1; }
+          echo "ESP is $ESP"
+          # The loop left $ESP mounted at /mnt/probe.
+          sudo rm -f /mnt/probe/loader/keys/auto/*.auth
+          ls -la /mnt/probe/loader/keys/auto/ || true
+          sudo umount /mnt/probe
           sudo qemu-nbd --disconnect /dev/nbd0
           # NoCloud drive: sets the demo root password for the serial console.
           genisoimage -quiet -output out/cidata.iso -volid cidata -joliet -rock \
