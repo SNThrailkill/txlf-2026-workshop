@@ -15,17 +15,18 @@ Proven against `SNThrailkill/Bootc-Fedora` at `main` = **8c0ac1c**.
 ./build.py doctor
 ```
 
-## 01 — Build
+## 01 — Build your first bootc image
+
+```dockerfile
+# Containerfile
+FROM ghcr.io/snthrailkill/bootc-fedora/nginx:latest
+RUN dnf -y install htop && dnf clean all
+```
 
 ```bash
-./build.py images
-./build.py matrix | jq .
-./build.py build --image nginx --tag demo
-./build.py shell --image nginx --tag demo
-# inside the image shell:
-bootc status
-ls /etc/containers/systemd
-exit
+podman build -t localhost/my-bootc:demo .
+podman run --rm -it localhost/my-bootc:demo /bin/bash
+# inside: bootc status | rpm -q htop | ls /etc/containers/systemd | exit
 ```
 
 ## 02 — Keys
@@ -48,20 +49,36 @@ git status --short
 ./build.py verify --image nginx-sealed --tag demo
 ```
 
-## 05 — Boot (plain qemu + OVMF, any OS; KVM optional)
+## 05 — Boot your sealed image
 
 ```bash
-curl -LO https://github.com/SNThrailkill/txlf-2026-workshop/releases/download/demo-disks/nginx-sealed-demo.qcow2
+# local registry + your sealed image
+podman run -d -p 5000:5000 --name registry docker.io/library/registry:2
+podman push --tls-verify=false localhost/nginx-sealed:demo \
+  localhost:5000/nginx-sealed:demo
+
+# disk from your image (image-builder; rootful podman)
+sudo podman pull --tls-verify=false localhost:5000/nginx-sealed:demo
+mkdir -p demo-disk
+sudo podman run --rm --privileged \
+  -v "$PWD/demo-disk:/output" \
+  -v /var/lib/containers/storage:/var/lib/containers/storage \
+  ghcr.io/osbuild/image-builder-cli:latest \
+  build \
+    --bootc-ref localhost:5000/nginx-sealed:demo \
+    --bootc-default-fs ext4 \
+    --output-name demo-disk \
+    --output-dir /output \
+    qcow2
+
+# boot (OVMF: dnf install edk2-ovmf | apt install ovmf | brew install qemu |
+#             winget install SoftwareFreedomConservancy.QEMU)
 curl -LO https://github.com/SNThrailkill/txlf-2026-workshop/releases/download/demo-disks/cidata.iso
-
-# OVMF: dnf install edk2-ovmf | apt install ovmf | brew install qemu |
-#       winget install SoftwareFreedomConservancy.QEMU
-
 cp /usr/share/edk2/ovmf/OVMF_VARS.fd ./VARS.fd
 qemu-system-x86_64 -enable-kvm -m 4096 \
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd \
   -drive if=pflash,format=raw,file=./VARS.fd \
-  -drive file=nginx-sealed-demo.qcow2,if=virtio \
+  -drive file=demo-disk/demo-disk.qcow2,if=virtio \
   -drive file=cidata.iso,media=cdrom \
   -netdev user,id=n0,hostfwd=tcp::2222-:22 -device virtio-net-pci,netdev=n0 \
   -nographic
@@ -72,12 +89,15 @@ findmnt -no OPTIONS /
 cat /proc/cmdline
 ```
 
+Fallback (any OS, no image-builder): `curl -LO …/releases/download/demo-disks/nginx-sealed-demo.qcow2`
+and boot it in place of `demo-disk/demo-disk.qcow2` — that disk enrolls
+Bootc-Fedora's keys, so step 06 does not apply to it.
+
 ## 06 — Update and rollback (local registry)
 
 ```bash
-# on the host, build a second sealed image and serve it locally:
+# on the host:
 ./build.py seal --image nginx-sealed --tag demo2
-podman run -d -p 5000:5000 --name registry docker.io/library/registry:2
 podman push --tls-verify=false localhost/nginx-sealed:demo2 \
   localhost:5000/nginx-sealed:demo2
 
@@ -87,6 +107,9 @@ sudo bootc switch --transport registry 10.0.2.2:5000/nginx-sealed:demo2
 sudo systemctl reboot
 sudo bootc status
 sudo bootc rollback && sudo systemctl reboot
+
+# on the host, when done:
+podman rm -f registry
 ```
 
 ## 07 — Supply chain
@@ -107,5 +130,5 @@ git checkout -- keys
 
 # stop the local registry and clean up the VM files:
 podman rm -f registry
-rm -f nginx-sealed-demo.qcow2 cidata.iso VARS.fd
+rm -f cidata.iso VARS.fd demo-disk/demo-disk.qcow2 nginx-sealed-demo.qcow2
 ```

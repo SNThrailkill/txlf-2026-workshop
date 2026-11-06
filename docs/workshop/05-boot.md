@@ -1,37 +1,66 @@
-# 05 — Boot it
+# 05 — Boot your sealed image
 
-**Goal:** boot a sealed image as a VM and confirm the running root is the one the
-UKI signed.
+**Goal:** turn the image you sealed into a VM that boots it with *your* keys
+enrolled, and confirm the running root is the one the UKI signed.
 
-No special tooling: **plain qemu + OVMF**, which runs on Linux, macOS and Windows,
-and works without KVM (TCG is slower but boots).
+Everything here uses plain **qemu + OVMF**, which runs on Linux, macOS and
+Windows; KVM is only an accelerator. If you cannot run image-builder (it needs
+rootful podman), skip to the fallback at the end of this page.
+
+### 1. Serve your sealed image from a local registry
+
+image-builder installs from local container storage, and the image you built is
+in *rootless* storage — so push it to a tiny local registry that the rootful
+side can pull:
 
 ```bash
-# 1. The demo disk and its cloud-init ISO — pre-built from Bootc-Fedora's
-#    *published* sealed image (see this repo's build-demo-disk.yml for how):
-curl -LO https://github.com/SNThrailkill/txlf-2026-workshop/releases/download/demo-disks/nginx-sealed-demo.qcow2
+podman run -d -p 5000:5000 --name registry docker.io/library/registry:2
+podman push --tls-verify=false localhost/nginx-sealed:demo \
+  localhost:5000/nginx-sealed:demo
+```
+
+Keep this registry running — step 06 pushes a second image to it.
+
+### 2. Build a bootable disk from your image
+
+```bash
+sudo podman pull --tls-verify=false localhost:5000/nginx-sealed:demo
+mkdir -p demo-disk
+sudo podman run --rm --privileged \
+  -v "$PWD/demo-disk:/output" \
+  -v /var/lib/containers/storage:/var/lib/containers/storage \
+  ghcr.io/osbuild/image-builder-cli:latest \
+  build \
+    --bootc-ref localhost:5000/nginx-sealed:demo \
+    --bootc-default-fs ext4 \
+    --output-name demo-disk \
+    --output-dir /output \
+    qcow2
+```
+
+This runs `bootc install` inside a privileged container and writes
+`demo-disk/demo-disk.qcow2`. `sudo` is required because image-builder needs real
+root and the *rootful* container storage — which is exactly why the image went
+through a registry first.
+
+### 3. Boot it
+
+```bash
 curl -LO https://github.com/SNThrailkill/txlf-2026-workshop/releases/download/demo-disks/cidata.iso
-
-# 2. OVMF firmware:
-#    Fedora:         sudo dnf install edk2-ovmf
-#    Debian/Ubuntu:  sudo apt install ovmf
-#    macOS:          brew install qemu        (the edk2-*.fd files ship with it)
-#    Windows:        winget install SoftwareFreedomConservancy.QEMU
-
-# 3. Start the VM. Adjust the two OVMF paths for your OS; drop -enable-kvm if
-#    your machine has none.
+# OVMF firmware for your OS:
+#   Fedora: sudo dnf install edk2-ovmf | Debian/Ubuntu: sudo apt install ovmf
+#   macOS:  brew install qemu | Windows: winget install SoftwareFreedomConservancy.QEMU
 cp /usr/share/edk2/ovmf/OVMF_VARS.fd ./VARS.fd
 qemu-system-x86_64 -enable-kvm -m 4096 \
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd \
   -drive if=pflash,format=raw,file=./VARS.fd \
-  -drive file=nginx-sealed-demo.qcow2,if=virtio \
+  -drive file=demo-disk/demo-disk.qcow2,if=virtio \
   -drive file=cidata.iso,media=cdrom \
   -netdev user,id=n0,hostfwd=tcp::2222-:22 -device virtio-net-pci,netdev=n0 \
   -nographic
 ```
 
-Log in on the serial console as **root / txlf2026** (the cloud-init ISO sets it),
-then:
+Log in as **root / txlf2026** (the cloud-init ISO sets it), then:
 
 ```bash
 bootc status
@@ -39,29 +68,44 @@ findmnt -no OPTIONS /
 cat /proc/cmdline
 ```
 
-## Why this VM looks the way it does
+## What just happened with Secure Boot
 
-* The disk was installed from the **published** `ghcr.io/snthrailkill/bootc-fedora/nginx:sealed`, not from a local build, so you are booting Bootc-Fedora's own artifact.
-* **Secure Boot is left in Setup Mode on purpose.** The disk's auto-enrol blobs
-  were removed at build time, because step 06 boots an image sealed with *your*
-  demo keys — a key Bootc-Fedora's enrolled db would reject. The signatures
-  themselves were proven in step 04 and are verified again on published images in
-  step 07; this VM demonstrates the *root digest* story.
-* The image ships `console=ttyS0`, which is what makes `-nographic` work on every
-  OS — no display needed.
+The VM's firmware starts with empty variables (**Setup Mode**), so nothing is
+enrolled. On first boot systemd-boot finds the `.auth` enrollment blobs your
+image ships on its ESP — the ones you generated in step 02 — enrolls them,
+reboots, and now enforces Secure Boot with **your keys and yours only**. That is
+why step 06 can later boot an image you seal yourself: its UKI is signed with
+the same db key.
 
 ## ✓ You should see
 
-* `bootc status` tracking `ghcr.io/snthrailkill/bootc-fedora/nginx:sealed`.
+* After the auto-enrollment reboot: Secure Boot **enabled**, `db` containing
+  your demo keys and no Microsoft keys.
+* `bootc status` tracking `localhost:5000/nginx-sealed:demo` (the ref
+  image-builder installed).
 * `findmnt -no OPTIONS /` shows an overlay with **`verity=require`**.
-* `/proc/cmdline` carries **`composefs.digest=`** (or `composefs=`) and **no `root=`**.
+* `/proc/cmdline` carries **`composefs.digest=`** and **no `root=`**.
 
 ## If stuck
 
-* OVMF file paths differ per distro — find them (`dnf repoquery -l edk2-ovmf` on
-  Fedora; on macOS they live under `brew --prefix qemu`); the filenames are
-  `OVMF_CODE`/`OVMF_VARS` variants.
-* `-enable-kvm: Invalid argument` → no KVM on this machine; drop the flag, expect a
-  slower boot, and give the login prompt a minute or two.
-* First boot runs cloud-init (root password) before the login prompt appears.
-* The demo disk download is large (~1.7 GB); start it early or pair up and share.
+* image-builder needs rootful podman — on macOS/Windows use the fallback below.
+* `sudo podman pull` fails with TLS errors → the `--tls-verify=false` flag is
+  what allows the plain-HTTP registry.
+* `-enable-kvm: Invalid argument` → no KVM on this machine; drop the flag and
+  give the login prompt a minute or two.
+* OVMF paths differ per distro — `dnf repoquery -l edk2-ovmf` (Fedora); on macOS
+  they live under `brew --prefix qemu`.
+
+## Fallback: a pre-built disk (any OS, no image-builder)
+
+If image-builder is not an option, boot a disk built from Bootc-Fedora's
+*published* image instead:
+
+```bash
+curl -LO https://github.com/SNThrailkill/txlf-2026-workshop/releases/download/demo-disks/nginx-sealed-demo.qcow2
+```
+
+Then run step 3's qemu command with `nginx-sealed-demo.qcow2` in place of
+`demo-disk/demo-disk.qcow2`. This disk enrolls **Bootc-Fedora's** keys rather
+than yours, so the boot works but **step 06's switch to your own image will be
+rejected** — use this path only when you cannot build your own disk.

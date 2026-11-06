@@ -7,8 +7,8 @@ Every build/seal/verify command in this repo runs against
 **[SNThrailkill/Bootc-Fedora](https://github.com/SNThrailkill/Bootc-Fedora)** — this
 repo is only the workshop materials, so there is nothing to fork or vendor here.
 The commands are proven against that repo at **`main` = 8c0ac1c**; if the surface
-drifts, `./build.py --help` there is the source of truth. The boot step uses a
-demo disk installed from Bootc-Fedora's *published* sealed image (see
+drifts, `./build.py --help` there is the source of truth. Step 05 offers a
+pre-built fallback disk installed from Bootc-Fedora's published sealed image (see
 [`build-demo-disk.yml`](.github/workflows/build-demo-disk.yml)).
 
 ## The eight steps at a glance
@@ -16,21 +16,23 @@ demo disk installed from Bootc-Fedora's *published* sealed image (see
 | # | Step | You end with | Time |
 |---|---|---|---|
 | 00 | [Prerequisites](docs/workshop/00-prereqs.md) | `doctor` says content **and** sealed are ready | 10 min |
-| 01 | [Build](docs/workshop/01-build.md) | an unsealed `nginx` image, and a shell inside it | 20 min |
+| 01 | [Build your first bootc image](docs/workshop/01-build.md) | your own image, built with plain podman | 20 min |
 | 02 | [Keys](docs/workshop/02-keys.md) | a demo PK/KEK/db, no private key in git | 15 min |
 | 03 | [Seal](docs/workshop/03-seal.md) | `nginx-sealed` with a signed UKI | 25 min |
 | 04 | [Verify](docs/workshop/04-verify.md) | `sbverify` OK on bootloader **and** UKI | 15 min |
-| 05 | [Boot](docs/workshop/05-boot.md) | the published image booted in plain qemu | 20 min |
-| 06 | [Update](docs/workshop/06-update.md) | your own image running, then a rollback | 30 min |
+| 05 | [Boot your sealed image](docs/workshop/05-boot.md) | a VM that boots with your keys | 30 min |
+| 06 | [Update](docs/workshop/06-update.md) | your second image running, then a rollback | 30 min |
 | 07 | [Supply chain](docs/workshop/07-supply-chain.md) | `Verified OK` on signature and SBOM | 15 min |
 
 ## Prerequisites
 
-* **podman** (recommended) or docker, plus **Python 3.9+** and **git**
+* **podman** — required; the workshop never uses docker
+* **Python 3.9+** and **git**
 * **`/dev/fuse`** — sealed builds compute the composefs digest through fuse
 * **~20 GB free disk**
-* For **step 05 only**: **qemu** with an **OVMF** firmware build. qemu runs on
-  Linux, macOS and Windows; **KVM is optional** (it only makes the boot faster).
+* **cosign** — needed only for step 07
+* **qemu + OVMF** — needed only for step 05; qemu runs on Linux, macOS and
+  Windows, and KVM is optional (it only makes the boot faster)
 
 ## Quickstart
 

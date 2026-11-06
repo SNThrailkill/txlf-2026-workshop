@@ -1,7 +1,14 @@
-# 07 — Supply chain: verify a published image
+# 07 — Verify a published image's attachments
 
-**Goal:** verify a *published* sealed image's signature and its SBOM attestation
-without building anything.
+**Goal:** check the signature and the SBOM that Bootc-Fedora publishes *with*
+its sealed image, without building anything.
+
+Every image Bootc-Fedora publishes carries two signed attachments alongside it in
+the registry, discoverable from the image reference itself:
+
+* a **signature** — proves the image you pull is the one the maintainer signed;
+* an **SBOM attestation** — a signed statement listing every package in the
+  image.
 
 ```bash
 cosign verify --key cosign.pub --insecure-ignore-tlog=true \
@@ -11,26 +18,26 @@ cosign verify-attestation --key cosign.pub --insecure-ignore-tlog=true \
   --type spdxjson ghcr.io/snthrailkill/bootc-fedora/nginx:sealed
 ```
 
+`cosign.pub` is Bootc-Fedora's public key, committed in its repo root. You never
+download the SBOM as a file — `verify-attestation` fetches the attachment stored
+with the image and checks it against the same key.
+
 ## ✓ You should see
 
-* `Verified OK` for the image — the registry digest is signed by the key in
-  `cosign.pub`.
-* `Verified OK` for the attestation, whose predicate is an SPDX SBOM: the inventory of
-  what that image contains.
+* `Verified OK` for the image.
+* `Verified OK` for the attestation — if you want to page through the package
+  list it contains:
 
-## Why the `--insecure-ignore-tlog` flag
-
-Bootc-Fedora's CI **tries** to publish to the Rekor transparency log and **falls back**
-to signing without a log entry when Rekor rejects the request. So some published images
-carry a Rekor entry and some do not, and a plain `cosign verify` fails on the ones that
-do not. `--insecure-ignore-tlog=true` accepts either — it is the flag Bootc-Fedora's own
-CI uses when it verifies its own output.
-
-It is also required for anything you sign yourself with `--tlog-upload=false`.
+```bash
+cosign verify-attestation --key cosign.pub --insecure-ignore-tlog=true \
+  --type spdxjson ghcr.io/snthrailkill/bootc-fedora/nginx:sealed \
+  | jq -r .payload | base64 -d | jq '.predicate.packages | length'
+```
 
 ## If stuck
 
-* `no matching signatures` → you left off `--insecure-ignore-tlog=true`.
+* `no matching signatures` → you left off `--insecure-ignore-tlog=true`, the
+  flag that skips the transparency-log requirement.
 * `no matching attestations` → wrong predicate type; this SBOM is `spdxjson`.
-* `cosign: command not found` → cosign ships separately from sigstore; install it and
-  retry. Nothing needs rebuilding.
+* `cosign: command not found` → cosign was in the prerequisites (step 00) —
+  install it and retry. Nothing needs rebuilding.
