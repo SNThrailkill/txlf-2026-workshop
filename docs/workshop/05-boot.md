@@ -1,22 +1,37 @@
 # 05 — Boot it
 
-**Goal:** boot the sealed image as a VM that trusts **only your keys**, and confirm
-the running root is the one the UKI signed.
+**Goal:** boot a sealed image as a VM and confirm the running root is the one the
+UKI signed.
 
-> **`bcvk` is a separate binary, not a bootc subcommand.** `bootc bcvk` does not
-> exist. Install it from <https://github.com/bootc-dev/bcvk>. This step needs real
-> virtualisation: `/dev/kvm`, qemu, libvirt and virtiofsd.
+No special tooling: **plain qemu + OVMF**, which runs on Linux, macOS and Windows,
+and works without KVM (TCG is slower but boots).
 
 ```bash
-bcvk libvirt run --name txlf-sealed \
-  --firmware=uefi-secure --filesystem=ext4 \
-  --secure-boot-keys target/keys --update-from-host \
-  localhost/nginx-sealed:demo
+# 1. The demo disk and its cloud-init ISO — pre-built from Bootc-Fedora's
+#    *published* sealed image (see this repo's build-demo-disk.yml for how):
+curl -LO https://github.com/SNThrailkill/txlf-2026-workshop/releases/download/demo-disks/nginx-sealed-demo.qcow2
+curl -LO https://github.com/SNThrailkill/txlf-2026-workshop/releases/download/demo-disks/cidata.iso
 
-bcvk libvirt ssh txlf-sealed
+# 2. OVMF firmware:
+#    Fedora:         sudo dnf install edk2-ovmf
+#    Debian/Ubuntu:  sudo apt install ovmf
+#    macOS:          brew install qemu        (the edk2-*.fd files ship with it)
+#    Windows:        winget install SoftwareFreedomConservancy.QEMU
+
+# 3. Start the VM. Adjust the two OVMF paths for your OS; drop -enable-kvm if
+#    your machine has none.
+cp /usr/share/edk2/ovmf/OVMF_VARS.fd ./VARS.fd
+qemu-system-x86_64 -enable-kvm -m 4096 \
+  -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd \
+  -drive if=pflash,format=raw,file=./VARS.fd \
+  -drive file=nginx-sealed-demo.qcow2,if=virtio \
+  -drive file=cidata.iso,media=cdrom \
+  -netdev user,id=n0,hostfwd=tcp::2222-:22 -device virtio-net-pci,netdev=n0 \
+  -nographic
 ```
 
-Inside the VM:
+Log in on the serial console as **root / txlf2026** (the cloud-init ISO sets it),
+then:
 
 ```bash
 bootc status
@@ -24,33 +39,29 @@ findmnt -no OPTIONS /
 cat /proc/cmdline
 ```
 
-## Why those flags
+## Why this VM looks the way it does
 
-* `--firmware=uefi-secure` — UEFI with Secure Boot enforced.
-* `--filesystem=ext4` — sealing needs fs-verity, which XFS does not provide.
-* `--secure-boot-keys target/keys` — enrols *your* PK/KEK/db rather than the vendor's.
-  That is what "no Microsoft keys" below means.
-* `--update-from-host` — bind-mounts the host's container storage into the guest, and
-  it is the **only reason step 06's `containers-storage:` switch can resolve**. Leave
-  it out and that step fails with "image not found".
+* The disk was installed from the **published** `ghcr.io/snthrailkill/bootc-fedora/nginx:sealed`, not from a local build, so you are booting Bootc-Fedora's own artifact.
+* **Secure Boot is left in Setup Mode on purpose.** The disk's auto-enrol blobs
+  were removed at build time, because step 06 boots an image sealed with *your*
+  demo keys — a key Bootc-Fedora's enrolled db would reject. The signatures
+  themselves were proven in step 04 and are verified again on published images in
+  step 07; this VM demonstrates the *root digest* story.
+* The image ships `console=ttyS0`, which is what makes `-nographic` work on every
+  OS — no display needed.
 
 ## ✓ You should see
 
-* Secure Boot enabled with **no Microsoft keys** in `db` — only the demo keys you
-  generated in step 02.
-* `findmnt -no OPTIONS /` shows an overlay carrying **`verity=require`**.
+* `bootc status` tracking `ghcr.io/snthrailkill/bootc-fedora/nginx:sealed`.
+* `findmnt -no OPTIONS /` shows an overlay with **`verity=require`**.
 * `/proc/cmdline` carries **`composefs.digest=`** (or `composefs=`) and **no `root=`**.
-* `bootc status` shows the deployment tracking `localhost/nginx-sealed:demo`.
 
 ## If stuck
 
-* `--firmware` or `--secure-boot-keys` not recognised → your bcvk predates them. Run
-  `bcvk libvirt run --help` and use the flags it lists.
-* No `/dev/kvm` → enable nested virtualisation, or pair with someone who has it.
-  Every other step works without this one.
-* It boots but `verity=require` is missing → the image was not sealed; go back to
-  step 03.
-* Prefer to boot the *published* image instead of your own build? Drop
-  `--secure-boot-keys target/keys --update-from-host` and use
-  `ghcr.io/snthrailkill/bootc-fedora/nginx:sealed`. It boots, but step 06 then needs
-  a reachable registry.
+* OVMF file paths differ per distro — find them (`dnf repoquery -l edk2-ovmf` on
+  Fedora; on macOS they live under `brew --prefix qemu`); the filenames are
+  `OVMF_CODE`/`OVMF_VARS` variants.
+* `-enable-kvm: Invalid argument` → no KVM on this machine; drop the flag, expect a
+  slower boot, and give the login prompt a minute or two.
+* First boot runs cloud-init (root password) before the login prompt appears.
+* The demo disk download is large (~1.7 GB); start it early or pair up and share.

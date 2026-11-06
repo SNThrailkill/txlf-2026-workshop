@@ -32,5 +32,6 @@ creates them.
   On a container host pass the device through; on a VM check the fuse module.
 * `doctor` exits **1** when either status line says "not ready". That is deliberate,
   and it is the one command in this workshop that is allowed to fail.
-* No `bcvk`? Steps 00–04 and 07 do not need it. Install it before step 05:
-  <https://github.com/bootc-dev/bcvk> — a separate binary, not a bootc subcommand.
+* Nothing else to install yet: the boot step (05) uses plain **qemu + OVMF**, which
+  runs on Linux, macOS and Windows, and needs **no KVM** — KVM only makes it faster.
+  You will install qemu there, not here.

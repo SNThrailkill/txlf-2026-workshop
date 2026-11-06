@@ -1,0 +1,82 @@
+# Produces the demo disk + cloud-init ISO that step 05 boots with plain qemu.
+#
+# This is NOT a fork of the pipeline: it installs Bootc-Fedora's *published*
+# sealed image (ghcr.io/snthrailkill/bootc-fedora/nginx:sealed, built OCI-format)
+# to a disk, strips the ESP's Secure Boot auto-enrol blobs so the VM stays in
+# Setup Mode, and publishes the result to the `demo-disks` release. Keeping the
+# VM in Setup Mode is deliberate: step 06 boots an image sealed with the
+# attendee's own demo keys, which no enrolled key would accept.
+#
+# Manual dispatch; the release is long-lived. Bootc-Fedora @ 8c0ac1c is the
+# source of the image, not of this file.
+name: build-demo-disk
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  disk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -q podman skopeo qemu-utils genisoimage
+
+      - name: Install the published sealed image to a disk
+        run: |
+          set -euo pipefail
+          IMG=ghcr.io/snthrailkill/bootc-fedora/nginx:sealed
+          mkdir -p out
+          # Single-arch import under the registry reference (the same pattern the
+          # private fork validates); then install from the image itself so the
+          # installer's bootc matches the image's bootc.
+          skopeo copy --override-arch amd64 "docker://${IMG}" "containers-storage:${IMG}"
+          sudo podman image inspect "$IMG" >/dev/null
+          truncate -s 12G out/disk.img
+          sudo podman run --rm --privileged --pid=host --ipc=host \
+            -v /dev:/dev \
+            -v "$PWD/out:/output" \
+            "$IMG" \
+            bootc install to-disk --generic-image --wipe --via-loopback \
+              --target-imgref "$IMG" \
+              /output/disk.img
+
+      - name: Stay in Setup Mode, add cloud-init, convert
+        run: |
+          set -euo pipefail
+          # Remove the auto-enrol blobs: this VM must stay in Setup Mode so the
+          # update step can boot an image sealed with the attendee's demo keys.
+          sudo modprobe nbd max_part=16
+          sudo qemu-nbd --connect=/dev/nbd0 out/disk.img
+          sudo mkdir -p /mnt/esp
+          sudo mount /dev/nbd0p1 /mnt/esp
+          sudo rm -f /mnt/esp/loader/keys/auto/*.auth
+          sudo umount /mnt/esp
+          sudo qemu-nbd --disconnect /dev/nbd0
+          # NoCloud drive: sets the demo root password for the serial console.
+          genisoimage -quiet -output out/cidata.iso -volid cidata -joliet -rock \
+            demo/cidata/user-data demo/cidata/meta-data
+          qemu-img convert -c -O qcow2 out/disk.img out/nginx-sealed-demo.qcow2
+          ls -lh out/
+
+      - name: Publish to the demo-disks release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          IMG=ghcr.io/snthrailkill/bootc-fedora/nginx:sealed
+          gh release view demo-disks >/dev/null 2>&1 || \
+            gh release create demo-disks \
+              --title "Demo disks for the TXLF 2026 workshop" \
+              --notes "Installed from ${IMG} (published image, OCI format). \
+                Secure Boot auto-enrol is removed on purpose: the VM boots in \
+                Setup Mode so step 06 can boot an image sealed with an \
+                attendee's own demo keys."
+          gh release upload demo-disks \
+            out/nginx-sealed-demo.qcow2 out/cidata.iso --clobber
+          gh release view demo-disks --json assets --jq '.assets[] | "\(.name) \(.size)"'

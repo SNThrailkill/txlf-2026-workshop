@@ -1,0 +1,8 @@
+#cloud-config
+# Demo credentials for the workshop VM's serial console only. Nothing here is
+# secret - this is a throwaway disk image used by step 05.
+users:
+  - name: root
+    password: txlf2026
+    lock_passwd: false
+ssh_pwauth: false
