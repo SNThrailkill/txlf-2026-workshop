@@ -52,7 +52,7 @@ curl -LO https://github.com/SNThrailkill/txlf-2026-workshop/releases/download/de
 #   macOS:  brew install qemu | Windows: winget install SoftwareFreedomConservancy.QEMU
 cp /usr/share/edk2/ovmf/OVMF_VARS.fd ./VARS.fd
 qemu-system-x86_64 -enable-kvm -M q35 -cpu host -m 4096 \
-  -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd \
+  -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd \
   -drive if=pflash,format=raw,file=./VARS.fd \
   -drive file=demo-disk/demo-disk.qcow2,if=virtio \
   -drive file=cidata.iso,media=cdrom \
@@ -60,9 +60,11 @@ qemu-system-x86_64 -enable-kvm -M q35 -cpu host -m 4096 \
   -nographic
 ```
 
-`-cpu host` is not optional detail: Fedora's userspace (including the UKI stub and
-`systemd-boot`) is built for **x86-64-v2**, and qemu's default `qemu64` CPU model
-does not provide those features — without it the guest dies before printing
+Note the **`OVMF_CODE.secboot.fd`** file: the plain `OVMF_CODE.fd` is built without
+Secure Boot, and booting with it silently gives you an unverified boot. Likewise
+`-cpu host` is not an optional detail: Fedora's userspace (including the UKI stub
+and `systemd-boot`) is built for **x86-64-v2**, and qemu's default `qemu64` CPU
+model does not provide those features — without it the guest dies before printing
 anything, with qemu burning a core and a silent console. On a machine **without
 KVM**, drop `-enable-kvm` and use `-cpu max` instead; both give you the required
 instruction set.
