@@ -36,7 +36,7 @@ jobs:
           # Single-arch import under the registry reference (the same pattern the
           # private fork validates); then install from the image itself so the
           # installer's bootc matches the image's bootc.
-          skopeo copy --override-arch amd64 "docker://${IMG}" "containers-storage:${IMG}"
+          sudo skopeo copy --override-arch amd64 "docker://${IMG}" "containers-storage:${IMG}"
           sudo podman image inspect "$IMG" >/dev/null
           truncate -s 12G out/disk.img
           sudo podman run --rm --privileged --pid=host --ipc=host \
