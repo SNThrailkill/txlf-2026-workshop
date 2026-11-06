@@ -27,16 +27,18 @@ From `check.sh`, every line `ok` — including **cosign** and **qemu** — follo
 From `doctor`:
 
 ```
-container manager: podman (podman version 5.x.y)
+container manager: podman (podman version 5.8.9)
 free disk: 42.3 GiB
 /dev/fuse: present
+keys: not present; run ./build.py keygen --demo (writes target/keys)
 Content builds: ready
-Sealed images: ready
+Sealed images: ready; run ./build.py keygen --demo, then ./build.py seal --image nginx-sealed
 ```
 
-The two lines that matter are the last two. The free-disk number is a warning
-threshold (below 20 GiB you will run out mid-seal), and `doctor` also prints a
-line about keys not being present — expected for now; step 02 generates them.
+Everything except `keys:` should be green. `keys: not present` is expected on the
+first run — step 02 generates them. The free-disk line is a warning threshold
+(below 20 GiB you will run out mid-seal); note it measures the filesystem the
+clone lives on, so clone into your home directory rather than `/tmp`.
 
 ## If stuck
 

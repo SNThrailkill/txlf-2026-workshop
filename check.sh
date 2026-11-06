@@ -16,6 +16,16 @@ check() { # label, command...
   fi
 }
 
+# Measure the filesystem podman actually stores images on, not the cwd - on
+# macOS with podman machine that path lives inside the VM, so fall back to ".".
+disk_ok() {
+  local root avail
+  root=$(podman info --format '{{.Store.GraphRoot}}' 2>/dev/null) || root="."
+  [ -d "$root" ] || root="."
+  avail=$(df -k "$root" | awk 'NR==2 {print $4}')
+  [ -n "$avail" ] && [ "$avail" -ge $((20 * 1024 * 1024)) ]
+}
+
 echo "TXLF 2026 pre-flight"
 echo
 
@@ -23,7 +33,7 @@ check "podman"   podman --version
 check "python3"  python3 --version
 check "git"      git --version
 check "/dev/fuse" test -c /dev/fuse
-check ">= 20 GiB free" sh -c 'test "$(df -k . | awk "NR==2 {print \$4}")" -ge $((20 * 1024 * 1024))'
+check ">= 20 GiB free where podman stores images" disk_ok
 check "cosign (step 07)" cosign version
 check "qemu (step 05)"   qemu-system-x86_64 --version
 
